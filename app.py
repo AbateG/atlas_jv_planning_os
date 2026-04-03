@@ -3,6 +3,10 @@
 import streamlit as st
 
 from src.constants import APP_NAME, APP_TAGLINE
+from src.db import initialize_database_if_needed
+
+# Initialize database on app startup - deployment-safe bootstrap
+initialize_database_if_needed()
 
 st.set_page_config(
     page_title=APP_NAME,

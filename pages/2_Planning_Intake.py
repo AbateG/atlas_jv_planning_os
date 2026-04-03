@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-from src.db import get_plan_versions, read_table, replace_validation_issues_for_version
+from src.db import get_plan_versions, read_table, replace_validation_issues_for_version, initialize_database_if_needed
 from src.planning import (
     build_editable_assumptions_frame,
     create_new_plan_version,
@@ -12,6 +12,8 @@ from src.planning import (
 )
 from src.ui_helpers import load_joined_validation_issues, render_global_disclaimer, dataframe_download_button
 
+# Ensure database is initialized before any queries
+initialize_database_if_needed()
 
 st.title("Planning Intake & Consolidation")
 

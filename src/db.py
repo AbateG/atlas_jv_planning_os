@@ -275,3 +275,30 @@ def get_project_defaults(project_id: int, plan_version_id: int) -> dict:
         "project_life": 20,
         "annual_decline_rate": 0.05,
     }
+
+
+def initialize_database_if_needed():
+    """
+    Idempotent deployment-safe bootstrap:
+    - create schema if needed
+    - seed data if core tables are missing/empty
+    """
+    core_tables = ["ventures", "assets", "scenarios", "plan_versions", "assumptions", "projects"]
+
+    # Check if core tables exist and have data
+    schema_needed = not all(table_exists(table) for table in core_tables)
+    seed_needed = schema_needed or any(get_row_count(table) == 0 for table in core_tables)
+
+    if schema_needed:
+        print("Initializing database schema...")
+        initialize_database()
+
+    if seed_needed:
+        print("Seeding database with synthetic data...")
+        from src.seed import seed_database
+        seed_database(reset=False, export_csv=False)  # Don't reset existing data, don't export CSVs in production
+
+    if schema_needed or seed_needed:
+        print("Database initialization complete.")
+    else:
+        print("Database already initialized.")
