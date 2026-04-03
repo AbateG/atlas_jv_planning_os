@@ -43,17 +43,25 @@ if raw_df.empty:
 The Mid-Year Update module requires seeded synthetic `monthly_actuals`.
 
 If this is a deployed environment, the database may be incomplete.
-Re-run database bootstrap and verify `monthly_actuals` has been populated.
+Recommended checks:
+- verify the database bootstrap process
+- verify `monthly_actuals` has been seeded
+- review the System Status page for table row counts
 """
         )
+    render_global_disclaimer()
     st.stop()
 
 try:
     df = prepare_mid_year_actuals(raw_df)
 except ValueError as e:
     st.error(str(e))
+    render_global_disclaimer()
     st.stop()
 
+# -----------------------------
+# Filters
+# -----------------------------
 f1, f2 = st.columns(2)
 
 with f1:
@@ -68,8 +76,12 @@ filtered_df = filter_mid_year_df(df, selected_venture, selected_asset)
 
 if filtered_df.empty:
     st.warning("No data available for the selected filters.")
+    render_global_disclaimer()
     st.stop()
 
+# -----------------------------
+# Reforecast controls
+# -----------------------------
 st.subheader("Reforecast Controls")
 
 c1, c2, c3, c4 = st.columns(4)
@@ -88,7 +100,11 @@ with c5:
 with c6:
     cashflow_factor = st.slider("H2 Cash Flow Adjustment", 0.80, 1.20, 1.00, 0.01)
 
+# -----------------------------
+# Reforecast build
+# -----------------------------
 ytd_df, h2_df = split_ytd_h2(filtered_df, cutoff_month)
+
 reforecast_h2 = apply_h2_adjustments(
     h2_df,
     production_factor=production_factor,
@@ -113,9 +129,23 @@ summary_table = build_summary_table(
 compare_table = build_reforecast_compare_table(original_fy, reforecast_fy)
 monthly_compare = build_monthly_compare_table(original_fy, reforecast_fy)
 
-st.subheader("Headline Reforecast Impact")
-
 headline_lookup = {row["metric"]: row for _, row in compare_table.iterrows()}
+
+# -----------------------------
+# Executive context
+# -----------------------------
+st.subheader("Executive Reforecast Summary")
+
+e1, e2, e3, e4 = st.columns(4)
+e1.metric("Venture Scope", selected_venture)
+e2.metric("Asset Scope", selected_asset)
+e3.metric("YTD Cutoff", f"Month {cutoff_month}")
+e4.metric("Months in Scope", filtered_df["year_label"].nunique())
+
+# -----------------------------
+# Headline impacts
+# -----------------------------
+st.subheader("Headline Reforecast Impact")
 
 m1, m2, m3, m4, m5 = st.columns(5)
 m1.metric("FY Production (bbl)", f"{headline_lookup['production_bbl']['reforecast_fy']:,.0f}", f"{headline_lookup['production_bbl']['delta']:,.0f}")
@@ -124,12 +154,18 @@ m3.metric("FY Capex ($MM)", f"{headline_lookup['capex_mm']['reforecast_fy']:,.2f
 m4.metric("FY Earnings ($MM)", f"{headline_lookup['earnings_mm']['reforecast_fy']:,.2f}", f"{headline_lookup['earnings_mm']['delta']:,.2f}")
 m5.metric("FY Cash Flow ($MM)", f"{headline_lookup['cashflow_mm']['reforecast_fy']:,.2f}", f"{headline_lookup['cashflow_mm']['delta']:,.2f}")
 
-st.subheader("Summary Table")
+# -----------------------------
+# Tables
+# -----------------------------
+st.subheader("Period Summary")
 st.dataframe(summary_table, use_container_width=True)
 
 st.subheader("Original vs Reforecast")
 st.dataframe(compare_table, use_container_width=True)
 
+# -----------------------------
+# Charts
+# -----------------------------
 chart_col1, chart_col2 = st.columns(2)
 
 with chart_col1:
@@ -166,6 +202,9 @@ with chart_col2:
     )
     st.plotly_chart(fig_monthly, use_container_width=True)
 
+# -----------------------------
+# Detail tabs
+# -----------------------------
 st.subheader("YTD Actuals and Reforecast Detail")
 
 detail_tab1, detail_tab2, detail_tab3 = st.tabs(["YTD Actuals", "Original H2", "Reforecast H2"])
@@ -197,4 +236,17 @@ if commentary:
     st.success("Reforecast commentary captured locally in session for demonstration.")
 
 dataframe_download_button(compare_table, "mid_year_update_summary.csv", "Download Reforecast Summary CSV")
+
+with st.expander("How to interpret this module"):
+    st.markdown(
+        """
+- **YTD Actuals** represent locked-in synthetic actual performance up to the selected cutoff month
+- **Original H2** represents the original synthetic remaining-year outlook
+- **Reforecast H2** applies user-selected adjustment factors to simulate a revised outlook
+- **Original vs Reforecast** highlights how the revised H2 assumptions change the full-year view
+
+This module is intentionally simplified for educational and portfolio purposes.
+"""
+    )
+
 render_global_disclaimer()

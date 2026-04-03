@@ -24,13 +24,13 @@ st.caption("Synthetic upstream JV performance reporting across production, cost,
 st.info(
     """
 This dashboard uses entirely synthetic monthly operating and financial performance data.
-It is designed for educational and portfolio demonstration purposes only.
+It is designed to demonstrate portfolio-style KPI reporting, not real operating or financial reporting.
 """
 )
 
-df = load_joined_monthly_actuals()
+raw_df = load_joined_monthly_actuals()
 
-if df.empty:
+if raw_df.empty:
     st.warning("No monthly actuals data found in the database.")
     with st.expander("Why this might happen"):
         st.markdown(
@@ -39,13 +39,15 @@ This dashboard depends on seeded synthetic `monthly_actuals` data.
 
 If you are viewing a cloud deployment, this usually means:
 - the database bootstrap completed only partially, or
-- the deployment database was initialized without monthly performance data.
+- the deployed database was initialized without monthly performance data.
 
-Recommended action:
-- verify database seeding includes `monthly_actuals` and `kpis`
+Recommended checks:
+- verify the database seeding process includes `monthly_actuals` and `kpis`
 - verify the deployed SQLite path and bootstrap flow
+- verify the System Status page for table row counts
 """
         )
+    render_global_disclaimer()
     st.stop()
 
 required_cols = [
@@ -58,13 +60,14 @@ required_cols = [
     "earnings_mm",
     "cashflow_mm",
 ]
-missing_cols = [col for col in required_cols if col not in df.columns]
+missing_cols = [col for col in required_cols if col not in raw_df.columns]
 
 if missing_cols:
     st.error(f"Missing required KPI columns: {missing_cols}")
+    render_global_disclaimer()
     st.stop()
 
-df = prepare_monthly_kpi_dataframe(df)
+df = prepare_monthly_kpi_dataframe(raw_df)
 
 st.subheader("Filters")
 
@@ -100,14 +103,18 @@ end_month = pd.to_datetime(selected_month_range[1])
 filtered_df = filtered_df[
     (filtered_df["year_month"] >= start_month) &
     (filtered_df["year_month"] <= end_month)
-]
+].copy()
 
 if filtered_df.empty:
-    st.warning("No data available for the selected filters.")
+    st.warning("No KPI data is available for the selected filters.")
+    render_global_disclaimer()
     st.stop()
 
 summary = summarize_monthly_kpis(filtered_df)
 asset_summary = summarize_asset_kpis(filtered_df)
+
+summary = summary.sort_values("year_month").reset_index(drop=True)
+asset_summary = asset_summary.reset_index(drop=True)
 
 latest = summary.iloc[-1]
 previous = summary.iloc[-2] if len(summary) > 1 else None
@@ -117,6 +124,20 @@ def delta_str(curr, prev):
         return None
     return curr - prev
 
+# -----------------------------
+# Executive summary
+# -----------------------------
+st.subheader("Executive Summary")
+
+es1, es2, es3, es4 = st.columns(4)
+es1.metric("Filtered Ventures", filtered_df["venture_name"].nunique())
+es2.metric("Filtered Assets", filtered_df["asset_name"].nunique())
+es3.metric("Months in Scope", summary["year_month"].nunique())
+es4.metric("Records in Scope", len(filtered_df))
+
+# -----------------------------
+# Headline KPIs
+# -----------------------------
 st.subheader("Headline Monthly KPIs")
 
 m1, m2, m3, m4, m5 = st.columns(5)
@@ -131,26 +152,50 @@ m6.metric("Production (bopd)", f"{latest['production_bopd']:,.0f}")
 m7.metric("Opex per bbl ($/bbl)", f"{latest['opex_per_bbl']:,.2f}" if pd.notna(latest["opex_per_bbl"]) else "N/A")
 m8.metric("Capex Intensity ($/bbl)", f"{latest['capex_intensity']:,.2f}" if pd.notna(latest["capex_intensity"]) else "N/A")
 
+# -----------------------------
+# Trends
+# -----------------------------
 st.subheader("Performance Trends")
 
 col_a, col_b = st.columns(2)
 
 with col_a:
-    fig_prod = px.line(summary, x="year_month", y=["production_bbl", "production_bopd"], title="Production Trend", markers=True)
+    fig_prod = px.line(
+        summary,
+        x="year_month",
+        y=["production_bbl", "production_bopd"],
+        title="Production Trend",
+        markers=True
+    )
     fig_prod.update_layout(xaxis_title="Month", yaxis_title="Production", template="plotly_white", height=420)
     st.plotly_chart(fig_prod, use_container_width=True)
 
 with col_b:
-    fig_fin = px.line(summary, x="year_month", y=["opex_mm", "capex_mm", "earnings_mm", "cashflow_mm"], title="Financial KPI Trends", markers=True)
+    fig_fin = px.line(
+        summary,
+        x="year_month",
+        y=["opex_mm", "capex_mm", "earnings_mm", "cashflow_mm"],
+        title="Financial KPI Trends",
+        markers=True
+    )
     fig_fin.update_layout(xaxis_title="Month", yaxis_title="$MM", template="plotly_white", height=420)
     st.plotly_chart(fig_fin, use_container_width=True)
 
+# -----------------------------
+# Efficiency and cash generation
+# -----------------------------
 st.subheader("Efficiency and Cash Generation")
 
 col_c, col_d = st.columns(2)
 
 with col_c:
-    fig_eff = px.line(summary, x="year_month", y=["opex_per_bbl", "capex_intensity"], title="Cost Efficiency Trend", markers=True)
+    fig_eff = px.line(
+        summary,
+        x="year_month",
+        y=["opex_per_bbl", "capex_intensity"],
+        title="Cost Efficiency Trend",
+        markers=True
+    )
     fig_eff.update_layout(xaxis_title="Month", yaxis_title="$/bbl", template="plotly_white", height=420)
     st.plotly_chart(fig_eff, use_container_width=True)
 
@@ -158,9 +203,18 @@ with col_d:
     fig_cash = go.Figure()
     fig_cash.add_bar(x=summary["year_month"], y=summary["cashflow_mm"], name="Cash Flow ($MM)")
     fig_cash.add_scatter(x=summary["year_month"], y=summary["earnings_mm"], mode="lines+markers", name="Earnings ($MM)")
-    fig_cash.update_layout(title="Cash Flow vs Earnings", xaxis_title="Month", yaxis_title="$MM", template="plotly_white", height=420)
+    fig_cash.update_layout(
+        title="Cash Flow vs Earnings",
+        xaxis_title="Month",
+        yaxis_title="$MM",
+        template="plotly_white",
+        height=420
+    )
     st.plotly_chart(fig_cash, use_container_width=True)
 
+# -----------------------------
+# Asset comparison
+# -----------------------------
 st.subheader("Asset Comparison")
 
 col_e, col_f = st.columns(2)
@@ -186,9 +240,17 @@ with col_f:
         hover_name="asset_name",
         title="Portfolio View: Production vs Cash Flow",
     )
-    fig_scatter.update_layout(xaxis_title="Production (bbl)", yaxis_title="Cash Flow ($MM)", template="plotly_white", height=420)
+    fig_scatter.update_layout(
+        xaxis_title="Production (bbl)",
+        yaxis_title="Cash Flow ($MM)",
+        template="plotly_white",
+        height=420
+    )
     st.plotly_chart(fig_scatter, use_container_width=True)
 
+# -----------------------------
+# Leaderboards
+# -----------------------------
 st.subheader("Asset Leaderboards")
 
 tab1, tab2, tab3 = st.tabs(["Top Cash Flow", "Lowest Opex per bbl", "Highest Production"])
@@ -202,6 +264,9 @@ with tab2:
 with tab3:
     st.dataframe(asset_summary.sort_values("production_bbl", ascending=False).reset_index(drop=True), use_container_width=True)
 
+# -----------------------------
+# Detailed data
+# -----------------------------
 st.subheader("Detailed Monthly Data")
 display_df = filtered_df.copy()
 display_df["year_month"] = display_df["year_month"].dt.strftime("%Y-%m")
@@ -220,13 +285,13 @@ dataframe_download_button(display_df, "kpi_dashboard_filtered.csv", "Download KP
 with st.expander("How to read this dashboard"):
     st.markdown(
         """
-- **Production (bbl / bopd):** operational output trend over time.
-- **Opex ($MM):** monthly operating expenditure.
-- **Capex ($MM):** monthly capital investment.
-- **Earnings ($MM):** synthetic profitability indicator.
-- **Cash Flow ($MM):** synthetic operating cash generation indicator.
-- **Opex per bbl:** cost efficiency proxy.
-- **Capex intensity:** capital spent relative to produced volumes.
+- **Production (bbl / bopd):** operational output trend over time
+- **Opex ($MM):** monthly operating expenditure
+- **Capex ($MM):** monthly capital investment
+- **Earnings ($MM):** synthetic profitability indicator
+- **Cash Flow ($MM):** synthetic operating cash generation indicator
+- **Opex per bbl:** cost efficiency proxy
+- **Capex intensity:** capital spent relative to produced volumes
 
 This dashboard is intentionally simplified and uses entirely synthetic data for portfolio demonstration.
 """
