@@ -41,10 +41,9 @@ def export_generated_csvs(data_dict: dict):
 
 
 def seed_database(reset: bool = True, export_csv: bool = True):
-    print("Initializing database schema...")
-    initialize_database()
-
     if reset:
+        print("Initializing database schema...")
+        initialize_database()
         print("Clearing existing data...")
         clear_existing_data()
 

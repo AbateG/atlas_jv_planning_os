@@ -5,7 +5,7 @@ import plotly.express as px
 import streamlit as st
 
 from src.config import DB_PATH
-from src.db import get_table_row_counts, read_table
+from src.db import get_database_status_summary, read_table
 from src.ui_helpers import render_global_disclaimer, dataframe_download_button
 
 st.set_page_config(page_title="System Status", page_icon="🛠️", layout="wide")
@@ -21,54 +21,53 @@ properly seeded, and ready for interactive use.
 )
 
 # -----------------------------
-# Load row counts
+# Load diagnostics
 # -----------------------------
 try:
-    counts_df = get_table_row_counts()
+    diagnostics = get_database_status_summary()
 except Exception as e:
     st.error(f"Could not load database diagnostics: {e}")
-    render_global_disclaimer()
-    st.stop()
-
-if counts_df.empty:
-    st.warning("No diagnostic information could be generated from the database.")
     render_global_disclaimer()
     st.stop()
 
 # -----------------------------
 # Derived health logic
 # -----------------------------
-critical_tables = [
-    "ventures",
-    "assets",
-    "scenarios",
-    "plan_versions",
-    "assumptions",
-    "projects",
-    "monthly_actuals",
-    "kpis",
-    "validation_issues",
-]
+database_ready = diagnostics["status"] == "Healthy"
+critical_tables = diagnostics["critical_tables"]
+missing_tables = diagnostics["missing_tables"]
+empty_tables = diagnostics["empty_tables"]
+row_counts = diagnostics["row_counts"]
 
-counts_df["is_critical"] = counts_df["table_name"].isin(critical_tables)
+# Create DataFrame for display
+counts_data = []
+for table in critical_tables:
+    exists = table in row_counts
+    count = row_counts.get(table, 0) if exists else 0
+    counts_data.append({
+        "table_name": table,
+        "exists": exists,
+        "row_count": count,
+    })
+
+counts_df = pd.DataFrame(counts_data)
+counts_df["is_critical"] = True
 counts_df["status"] = counts_df["row_count"].apply(lambda x: "Empty" if x == 0 else "Populated")
 
 critical_df = counts_df[counts_df["is_critical"]].copy()
 empty_critical_df = critical_df[critical_df["row_count"] == 0].copy()
 
-database_ready = empty_critical_df.empty
-
 # -----------------------------
 # Top summary
 # -----------------------------
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("Tracked Tables", len(counts_df))
-m2.metric("Critical Tables", len(critical_df))
+m1.metric("Tracked Tables", diagnostics["existing_table_count"])
+m2.metric("Critical Tables", diagnostics["critical_table_count"])
 m3.metric("Empty Critical Tables", len(empty_critical_df))
-m4.metric("System Readiness", "Ready" if database_ready else "Incomplete")
+m4.metric("System Readiness", diagnostics["status"])
 
 st.markdown("### Deployment Context")
-st.code(f"DB_PATH = {DB_PATH}")
+st.code(f"DB_PATH = {diagnostics['db_path']}")
 
 if database_ready:
     st.success("The database appears complete enough for the main Atlas JV Planning OS workflow pages.")
@@ -117,9 +116,14 @@ with tab1:
 with tab2:
     st.markdown("### Critical Table Gaps")
 
-    if empty_critical_df.empty:
+    if not missing_tables and not empty_tables:
         st.success("No critical table gaps detected.")
     else:
+        if missing_tables:
+            st.error(f"Missing critical tables: {', '.join(missing_tables)}")
+        if empty_tables:
+            st.warning(f"Empty critical tables: {', '.join(empty_tables)}")
+
         st.dataframe(empty_critical_df, use_container_width=True)
 
         with st.expander("Why this matters"):
@@ -132,6 +136,7 @@ Examples:
 - **assumptions empty** → Planning Intake and plan comparisons lose value
 - **projects empty** → Economics page becomes limited
 - **kpis empty** → KPI storage and derived reporting are incomplete
+- **economics_results empty** → Economics calculations are not stored
 """
             )
 
@@ -169,18 +174,16 @@ Recommended next checks:
 """
         )
     else:
-        st.markdown(
-            """
-The deployment appears incomplete.
+        st.markdown(f"""
+**{diagnostics["recommended_action"]}**
 
-Recommended actions:
+Additional troubleshooting steps:
 1. verify schema initialization runs on startup
 2. verify database bootstrap seeds **all** critical tables
 3. verify `monthly_actuals` and `kpis` are populated in cloud deployment
 4. verify the deployed SQLite path is correct and writable
 5. rebuild/reseed the deployment database if necessary
-"""
-        )
+""")
 
 st.subheader("Interpretation Guide")
 with st.expander("How to read this page"):

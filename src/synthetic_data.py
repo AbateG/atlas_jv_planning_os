@@ -169,10 +169,13 @@ def generate_assumptions(assets_df: pd.DataFrame, plan_versions_df: pd.DataFrame
             tax_rate = base["base_tax"]
 
             if version_name == "BP2026_Base_v2":
-                oil_price *= np.random.uniform(1.01, 1.04)
-                production_bopd *= np.random.uniform(1.01, 1.06)
-                opex_per_bbl *= np.random.uniform(0.99, 1.03)
-                capex_mm *= np.random.uniform(1.00, 1.05)
+                # Moderate, believable deltas reflecting realistic planning refresh
+                oil_price *= np.random.uniform(1.02, 1.05)  # +2% to +5%
+                gas_price *= np.random.uniform(0.99, 1.03)  # -1% to +3%
+                production_bopd *= np.random.uniform(1.01, 1.03)  # +1% to +3%
+                opex_per_bbl *= np.random.uniform(1.01, 1.04)  # +1% to +4%
+                capex_mm *= np.random.uniform(0.98, 1.02)  # -2% to +2%
+                inflation_rate *= np.random.uniform(1.00, 1.02)  # Slight inflation adjustment
 
             elif scenario_id == 2:  # High
                 oil_price *= np.random.uniform(1.10, 1.20)
