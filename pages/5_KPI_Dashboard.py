@@ -32,6 +32,20 @@ df = load_joined_monthly_actuals()
 
 if df.empty:
     st.warning("No monthly actuals data found in the database.")
+    with st.expander("Why this might happen"):
+        st.markdown(
+            """
+This dashboard depends on seeded synthetic `monthly_actuals` data.
+
+If you are viewing a cloud deployment, this usually means:
+- the database bootstrap completed only partially, or
+- the deployment database was initialized without monthly performance data.
+
+Recommended action:
+- verify database seeding includes `monthly_actuals` and `kpis`
+- verify the deployed SQLite path and bootstrap flow
+"""
+        )
     st.stop()
 
 required_cols = [

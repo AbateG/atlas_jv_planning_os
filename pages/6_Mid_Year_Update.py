@@ -37,6 +37,15 @@ raw_df = load_joined_monthly_actuals()
 
 if raw_df.empty:
     st.warning("No monthly actuals data available.")
+    with st.expander("Why this might happen"):
+        st.markdown(
+            """
+The Mid-Year Update module requires seeded synthetic `monthly_actuals`.
+
+If this is a deployed environment, the database may be incomplete.
+Re-run database bootstrap and verify `monthly_actuals` has been populated.
+"""
+        )
     st.stop()
 
 try:

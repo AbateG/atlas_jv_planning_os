@@ -97,6 +97,7 @@ def generate_scenarios() -> pd.DataFrame:
 def generate_plan_versions() -> pd.DataFrame:
     versions = [
         {"version_name": "BP2026_Base_v1", "plan_year": 2026, "scenario_id": 1, "status": "Approved"},
+        {"version_name": "BP2026_Base_v2", "plan_year": 2026, "scenario_id": 1, "status": "Draft"},
         {"version_name": "BP2026_High_v1", "plan_year": 2026, "scenario_id": 2, "status": "Draft"},
         {"version_name": "BP2026_Low_v1", "plan_year": 2026, "scenario_id": 3, "status": "Draft"},
     ]
@@ -133,34 +134,59 @@ def _asset_profile(asset_name: str) -> dict:
 def generate_assumptions(assets_df: pd.DataFrame, plan_versions_df: pd.DataFrame) -> pd.DataFrame:
     rows = []
 
+    # Stable base assumptions by asset
+    asset_base_map = {}
+
+    for asset_id, asset in enumerate(assets_df.to_dict("records"), start=1):
+        profile = _asset_profile(asset["asset_name"])
+        asset_base_map[asset_id] = {
+            "base_prod": np.random.uniform(*profile["prod_range"]),
+            "base_opex": np.random.uniform(*profile["opex_range"]),
+            "base_capex": np.random.uniform(*profile["capex_range"]),
+            "base_oil_price": np.random.uniform(58, 72),
+            "base_gas_price": np.random.uniform(2.8, 4.0),
+            "base_fx": np.random.uniform(30, 45),
+            "base_inflation": np.random.uniform(0.02, 0.08),
+            "base_royalty": np.random.uniform(0.12, 0.25),
+            "base_tax": np.random.uniform(0.25, 0.38),
+        }
+
     for version_id, version in enumerate(plan_versions_df.to_dict("records"), start=1):
-        scenario_name = {1: "Base", 2: "High", 3: "Low"}[version["scenario_id"]]
+        version_name = version["version_name"]
+        scenario_id = version["scenario_id"]
 
         for asset_id, asset in enumerate(assets_df.to_dict("records"), start=1):
-            profile = _asset_profile(asset["asset_name"])
+            base = asset_base_map[asset_id]
 
-            base_prod = np.random.uniform(*profile["prod_range"])
-            base_opex = np.random.uniform(*profile["opex_range"])
-            base_capex = np.random.uniform(*profile["capex_range"])
+            oil_price = base["base_oil_price"]
+            gas_price = base["base_gas_price"]
+            production_bopd = base["base_prod"]
+            opex_per_bbl = base["base_opex"]
+            capex_mm = base["base_capex"]
+            fx_rate = base["base_fx"]
+            inflation_rate = base["base_inflation"]
+            royalty_rate = base["base_royalty"]
+            tax_rate = base["base_tax"]
 
-            if scenario_name == "High":
-                oil_price = np.random.uniform(70, 85)
-                gas_price = np.random.uniform(3.5, 5.0)
-                production_bopd = base_prod * np.random.uniform(1.05, 1.15)
-                opex_per_bbl = base_opex * np.random.uniform(0.95, 1.02)
-                capex_mm = base_capex * np.random.uniform(1.00, 1.15)
-            elif scenario_name == "Low":
-                oil_price = np.random.uniform(45, 60)
-                gas_price = np.random.uniform(2.0, 3.2)
-                production_bopd = base_prod * np.random.uniform(0.85, 0.97)
-                opex_per_bbl = base_opex * np.random.uniform(1.00, 1.12)
-                capex_mm = base_capex * np.random.uniform(0.85, 1.00)
-            else:
-                oil_price = np.random.uniform(58, 72)
-                gas_price = np.random.uniform(2.8, 4.0)
-                production_bopd = base_prod
-                opex_per_bbl = base_opex
-                capex_mm = base_capex
+            if version_name == "BP2026_Base_v2":
+                oil_price *= np.random.uniform(1.01, 1.04)
+                production_bopd *= np.random.uniform(1.01, 1.06)
+                opex_per_bbl *= np.random.uniform(0.99, 1.03)
+                capex_mm *= np.random.uniform(1.00, 1.05)
+
+            elif scenario_id == 2:  # High
+                oil_price *= np.random.uniform(1.10, 1.20)
+                gas_price *= np.random.uniform(1.10, 1.20)
+                production_bopd *= np.random.uniform(1.05, 1.15)
+                opex_per_bbl *= np.random.uniform(0.95, 1.02)
+                capex_mm *= np.random.uniform(1.00, 1.15)
+
+            elif scenario_id == 3:  # Low
+                oil_price *= np.random.uniform(0.75, 0.90)
+                gas_price *= np.random.uniform(0.75, 0.90)
+                production_bopd *= np.random.uniform(0.85, 0.97)
+                opex_per_bbl *= np.random.uniform(1.00, 1.12)
+                capex_mm *= np.random.uniform(0.85, 1.00)
 
             rows.append(
                 {
@@ -168,13 +194,13 @@ def generate_assumptions(assets_df: pd.DataFrame, plan_versions_df: pd.DataFrame
                     "asset_id": asset_id,
                     "oil_price": round(oil_price, 2),
                     "gas_price": round(gas_price, 2),
-                    "fx_rate": round(np.random.uniform(30, 45), 2),
-                    "inflation_rate": round(np.random.uniform(0.02, 0.08), 4),
+                    "fx_rate": round(fx_rate, 2),
+                    "inflation_rate": round(inflation_rate, 4),
                     "production_bopd": round(production_bopd, 2),
                     "opex_per_bbl": round(opex_per_bbl, 2),
                     "capex_mm": round(capex_mm, 2),
-                    "royalty_rate": round(np.random.uniform(0.12, 0.25), 4),
-                    "tax_rate": round(np.random.uniform(0.25, 0.38), 4),
+                    "royalty_rate": round(royalty_rate, 4),
+                    "tax_rate": round(tax_rate, 4),
                 }
             )
 
@@ -221,24 +247,42 @@ def generate_projects(assets_df: pd.DataFrame, plan_versions_df: pd.DataFrame) -
 
 def generate_economics_results(projects_df: pd.DataFrame) -> pd.DataFrame:
     rows = []
+
     for project_id, project in enumerate(projects_df.to_dict("records"), start=1):
-        capex = project["capex_mm"]
+        capex_usd = project["capex_mm"] * 1_000_000
         uplift = project["expected_uplift_bopd"]
 
-        # simple synthetic economics logic for seeded sample outputs
-        annual_cashflow = uplift * np.random.uniform(45, 65) / 1_000_000 * 365
-        npv = annual_cashflow * np.random.uniform(2.0, 4.5) - capex
+        annual_revenue = uplift * 365 * np.random.uniform(55, 75)
+        annual_opex = uplift * 365 * np.random.uniform(8, 18)
+        annual_royalty = annual_revenue * np.random.uniform(0.10, 0.20)
+        annual_tax = max(annual_revenue - annual_opex - annual_royalty, 0) * np.random.uniform(0.25, 0.35)
+        annual_fcf = annual_revenue - annual_opex - annual_royalty - annual_tax
+
+        npv = annual_fcf * np.random.uniform(2.0, 4.0) - capex_usd
         irr = np.random.uniform(0.12, 0.45)
         payback = np.random.uniform(1.2, 4.8)
 
         rows.append(
             {
                 "project_id": project_id,
-                "discount_rate": 0.10,
-                "npv_mm": round(npv, 2),
+                "plan_version_id": project["version_id"],
+                "npv": round(npv, 2),
                 "irr": round(irr, 4),
-                "payback_years": round(payback, 2),
-                "scenario_name": "Base",
+                "payback_period_years": round(payback, 2),
+                "total_revenue": round(annual_revenue * 5, 2),
+                "total_opex": round(annual_opex * 5, 2),
+                "total_royalty": round(annual_royalty * 5, 2),
+                "total_tax": round(annual_tax * 5, 2),
+                "total_fcf": round(annual_fcf * 5, 2),
+                "oil_price": round(np.random.uniform(58, 75), 2),
+                "production_uplift_bopd": round(uplift, 2),
+                "opex_per_bbl": round(np.random.uniform(8, 18), 2),
+                "capex": round(capex_usd, 2),
+                "royalty_rate": round(np.random.uniform(0.10, 0.20), 4),
+                "tax_rate": round(np.random.uniform(0.25, 0.35), 4),
+                "discount_rate": 0.10,
+                "project_life": 10,
+                "annual_decline_rate": 0.12,
             }
         )
 

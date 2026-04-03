@@ -277,28 +277,65 @@ def get_project_defaults(project_id: int, plan_version_id: int) -> dict:
     }
 
 
+def get_table_row_counts() -> pd.DataFrame:
+    tables = [
+        "ventures",
+        "assets",
+        "scenarios",
+        "plan_versions",
+        "assumptions",
+        "projects",
+        "economics_results",
+        "monthly_actuals",
+        "kpis",
+        "validation_issues",
+    ]
+
+    rows = []
+    for table in tables:
+        exists = table_exists(table)
+        count = get_row_count(table) if exists else 0
+        rows.append({
+            "table_name": table,
+            "exists": exists,
+            "row_count": count,
+        })
+
+    return pd.DataFrame(rows)
+
+
 def initialize_database_if_needed():
     """
-    Idempotent deployment-safe bootstrap:
-    - create schema if needed
-    - seed data if core tables are missing/empty
+    Deployment-safe bootstrap.
+    If critical tables are missing or empty, rebuild and reseed deterministically.
     """
-    core_tables = ["ventures", "assets", "scenarios", "plan_versions", "assumptions", "projects"]
+    critical_tables = [
+        "ventures",
+        "assets",
+        "scenarios",
+        "plan_versions",
+        "assumptions",
+        "projects",
+        "monthly_actuals",
+        "kpis",
+    ]
 
-    # Check if core tables exist and have data
-    schema_needed = not all(table_exists(table) for table in core_tables)
-    seed_needed = schema_needed or any(get_row_count(table) == 0 for table in core_tables)
+    schema_needed = not all(table_exists(table) for table in critical_tables)
 
     if schema_needed:
         print("Initializing database schema...")
         initialize_database()
 
-    if seed_needed:
-        print("Seeding database with synthetic data...")
-        from src.seed import seed_database
-        seed_database(reset=False, export_csv=False)  # Don't reset existing data, don't export CSVs in production
+    incomplete = False
+    for table in critical_tables:
+        if not table_exists(table) or get_row_count(table) == 0:
+            incomplete = True
+            break
 
-    if schema_needed or seed_needed:
-        print("Database initialization complete.")
+    if incomplete:
+        print("Database is incomplete. Rebuilding synthetic dataset...")
+        from src.seed import seed_database
+        seed_database(reset=True, export_csv=False)
+        print("Database rebuild complete.")
     else:
-        print("Database already initialized.")
+        print("Database already initialized and complete.")

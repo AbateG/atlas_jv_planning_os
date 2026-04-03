@@ -22,11 +22,14 @@ TABLE_LOAD_ORDER = [
 def clear_existing_data():
     """
     Clears tables in reverse dependency order to avoid FK issues.
+    Resets autoincrement sequences.
     """
     reverse_order = list(reversed(TABLE_LOAD_ORDER))
     with get_connection() as conn:
         for table in reverse_order:
             conn.execute(f"DELETE FROM {table}")
+            # Reset autoincrement sequence for SQLite
+            conn.execute(f"DELETE FROM sqlite_sequence WHERE name='{table}'")
         conn.commit()
 
 
